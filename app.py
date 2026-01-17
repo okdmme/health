@@ -1,20 +1,46 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
 import os
+from datetime import date  # これが抜けているとエラーになります
+import google.generativeai as genai
 
+# --- AIの設定 ---
+# 先ほど取得したAPIキーをここに入れます
+# ※ GitHubに上げる際は、このキーを消すか .env を使うようにしましょう
+genai.configure(api_key="あなたのAPIキーをここに貼り付け")
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# ページ全体の初期設定（一番最初に書く必要があります）
 st.set_page_config(page_title="Health Tracker", page_icon="🌡️")
 st.title("🌡️ 体調管理アプリ health")
 
-# --- 過去のデータを読み込んでアドバイスを表示 ---
+# --- AIアドバイス機能（サイドバー） ---
 if os.path.exists("data.csv"):
     df_history = pd.read_csv("data.csv")
-    
+    if len(df_history) >= 3:
+        st.sidebar.header("🤖 AI健康診断")
+        if st.sidebar.button("AIにアドバイスをもらう"):
+            # データをテキスト化
+            recent_data = df_history.tail(7).to_string(index=False)
+            
+            # 指示を短くして「考える時間」を減らす
+            prompt = f"以下の健康データを簡潔に分析し、1行でアドバイスをください：\n{recent_data}"
+            
+            with st.sidebar:
+                with st.spinner("AIが思考中..."):
+                    try:
+                        # stream=True で逐次生成
+                        response = model.generate_content(prompt, stream=True)
+                        # 文字が生成された順にリアルタイム表示
+                        st.write_stream(response)
+                    except Exception as e:
+                        st.error(f"AIエラー: {e}")
+
+# --- 過去の統計アドバイス（サイドバー） ---
+if os.path.exists("data.csv"):
     if len(df_history) >= 1:
-        # 直近3日間の平均睡眠時間を計算（データが1つでもあれば計算します）
         avg_sleep = df_history["睡眠"].tail(3).mean()
-        
-        st.sidebar.header("📊 あなたへのアドバイス")
+        st.sidebar.header("📊 統計アドバイス")
         if avg_sleep < 6.0:
             st.sidebar.warning(f"⚠️ 直近の平均睡眠が {avg_sleep:.1f}時間 と短めです。")
             st.sidebar.info("今日は22時までに布団に入り、8時間睡眠を目指しましょう！")
@@ -55,4 +81,4 @@ if submitted:
     }
     df = pd.DataFrame([new_data])
     df.to_csv("data.csv", mode='a', index=False, header=not os.path.exists("data.csv"))
-    st.success("記録を保存しました！画面を更新するとアドバイスが更新されます。")
+    st.success("記録を保存しました！画面を更新（F5）するとアドバイスが反映されます。")
